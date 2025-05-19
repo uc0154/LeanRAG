@@ -1,0 +1,27 @@
+
+# GLM Configuration
+# glm:
+#   model: "bge-m3:latest"
+#   api_key: "ollama"
+#   base_url: "http://localhost:11435/v1"
+#   embedding_model: "bge-m3:latest"
+glm:
+  model: "/cpfs04/user/zhangyaoze/vllm_weight/bge-m3"
+  api_key: "ollama"
+  base_url: "http://localhost:8001/v1"
+  embedding_model: "bge-m3:latest"
+
+deepseek:
+  # model: "/cpfs04/user/zhangyaoze/vllm_weight/Qwen2.5-7B-Instruct"
+  # model: "/cpfs04/user/zhangyaoze/vllm_weight/Qwen3-awq"
+  model: "/cpfs04/user/zhangyaoze/vllm_weight/Qwen3-14b"
+  # model: "/cpfs04/user/zhangyaoze/vllm_weight/qwen3-32b"
+  api_key: "ollama"
+  base_url: "http://localhost:8000/v1"
+
+# Model Parameters
+model_params:
+  openai_embedding_dim: 1536
+  glm_embedding_dim: 1024
+  max_token_size: 8192
+
