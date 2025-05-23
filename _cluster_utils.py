@@ -470,12 +470,13 @@ def process_relation(
     temp_relations={}
     tokens=len(tokenizer.encode("\n".join(relation_infromation)))
     gene_tokens=(layer+1)*40
-    allowed_tokens=(max_depth-layer)*40*3
+    allowed_tokens=(max_depth-layer)*40*2
+    # allowed_tokens=1
     if tokens>allowed_tokens:
         print(f"{tokens}大于{allowed_tokens}，进行llm生成\n{maybe_edge[0]}和{maybe_edge[1]} in processing")
         exact_prompt=cluster_cluster_relation_prompt.format(entity_a=maybe_edge[0],entity_b=maybe_edge[1],\
             entity_a_description=cluster1_description,entity_b_description=cluster2_description,\
-                relation_information="\n".join(relation_infromation))
+                relation_information="\n".join(relation_infromation),tokens=gene_tokens)
         
         response = use_llm_func(exact_prompt)
         temp_relations[maybe_edge]={
@@ -543,17 +544,20 @@ class Hierarchical_Clustering(ClusteringAlgorithm):
             unique_clusters = np.unique(np.concatenate(clusters))
             logging.info(f"[Clustered Label Num: {len(unique_clusters)} / Last Layer Total Entity Num: {len(nodes)}]")
             # calculate the number of nodes belong to each cluster
-            cluster_sizes = Counter(np.concatenate(clusters))
-            # calculate cluster sparsity
-            cluster_sparsity = 1 - sum([x * (x - 1) for x in cluster_sizes.values()])/(len(nodes) * (len(nodes) - 1))
-            cluster_sparsity_change_rate = (abs(cluster_sparsity - pre_cluster_sparsity) / pre_cluster_sparsity)
-            pre_cluster_sparsity = cluster_sparsity
-            logging.info(f"[Cluster Sparsity: {round(cluster_sparsity, 4) * 100}%]")
+            # cluster_sizes = Counter(np.concatenate(clusters))
+            # # calculate cluster sparsity
+            # cluster_sparsity = 1 - sum([x * (x - 1) for x in cluster_sizes.values()])/(len(nodes) * (len(nodes) - 1))
+            # cluster_sparsity_change_rate = (abs(cluster_sparsity - pre_cluster_sparsity) / pre_cluster_sparsity)
+            # pre_cluster_sparsity = cluster_sparsity
+            # logging.info(f"[Cluster Sparsity: {round(cluster_sparsity, 4) * 100}%]")
             
-            if cluster_sparsity_change_rate <= thredshold_change_rate:
-                logging.info(f"[Stop Clustering at Layer{layer} with Cluster Sparsity Change Rate {round(cluster_sparsity_change_rate, 4) * 100}%]")
-                break
+            # if cluster_sparsity_change_rate <= thredshold_change_rate:
+            #     logging.info(f"[Stop Clustering at Layer{layer} with Cluster Sparsity Change Rate {round(cluster_sparsity_change_rate, 4) * 100}%]")
+            #     break
             # summarize
+            if len(unique_clusters) <=4:
+                print(f"当前簇数小于5，停止聚类")
+                break
             with ThreadPoolExecutor(max_workers=8) as executor:
                 futures = [
                     executor.submit(
@@ -575,7 +579,7 @@ class Hierarchical_Clustering(ClusteringAlgorithm):
            
             
 
-            temp_cluster_relation=[i['entity_name'] for i in temp_clusters_nodes]  
+            temp_cluster_relation=[i['entity_name'] for i in temp_clusters_nodes if i['entity_name'] in community_report.keys()] 
             temp_relations={}     
             with ThreadPoolExecutor(max_workers=8) as executor:
                 futures = [
@@ -608,6 +612,12 @@ class Hierarchical_Clustering(ClusteringAlgorithm):
                     seen.add(entity_name)
                     unique_nodes.append(item)
             nodes = unique_nodes
+            for index,i in enumerate(unique_nodes): #再进行embedding时发现，有个元素的vector不是np而是list
+                vec=i["vector"]
+                if type(vec)==list  or vec.shape!=(1,1024):
+                    print(index)
+                    unique_nodes[index]["vector"]=np.array(vec).reshape((1,1024))
+            
             embeddings = np.array([x["vector"] for x in unique_nodes]).squeeze() #为下一轮迭代做准备
             all_nodes.append(nodes) 
             save_entities=copy.deepcopy(all_nodes)

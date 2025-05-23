@@ -1,8 +1,23 @@
 import json
 import re
+import subprocess
+import threading
+import time
 import jieba
 import os
-
+import numpy as np
+from openai import OpenAI
+import requests
+import tiktoken
+tokenizer = tiktoken.get_encoding("cl100k_base")
+TOTAL_TOKEN_COST = 0
+TOTAL_API_CALL_COST = 0
+def truncate_text(text, max_tokens=4096):
+    tokens = tokenizer.encode(text)
+    if len(tokens) > max_tokens:
+        tokens = tokens[:max_tokens]
+    truncated_text = tokenizer.decode(tokens)
+    return truncated_text
 def create_if_not_exist(path):
     if not os.path.exists(path):  # 如果目录不存在，递归创建该目录
         os.makedirs(path, exist_ok=True)
@@ -107,4 +122,98 @@ def write_jsonl_force(data, path, mode="w+",encoding='utf-8'):
     with open(path, mode, encoding=encoding) as f:
         for d in data:
             f.write(json.dumps(d, ensure_ascii=False) + "\n")
+def check_test(entities):## 初期用于检测是否有边界错误
+    e_l=[]
+    for layer in entities:
+        temp_e=[]
+        if type(layer) != list:
+            temp_e.append(layer['entity_name'])
+            e_l.append(temp_e)
+            continue
+        for item in layer:
+            temp_e.append(item['entity_name'])
+        e_l.append(temp_e)
+        
+    for index,layer in enumerate(entities):
+        if type(layer) != list or len(layer) == 1:
+            break
+        for item in layer:
+            if item['parent'] not in e_l[index+1]:
+                print(item['entity_name'],item['parent'])
+                
+class InstanceManager:
+    def __init__(self, ports, gpus, generate_model,startup_delay=30):
+        self.ports = ports
+        self.gpus = gpus
+        self.instances = []
+        self.lock = threading.Lock()
+        self.current_instance = 0  # 用于轮询策略
+        self.generate_model=generate_model
+        self.TOTAL_TOKEN_COST = 0
+        self.TOTAL_API_CALL_COST = 0
+        for port, gpu in zip(self.ports, self.gpus):
+            self.start_instance(gpu,port)
+            self.instances.append({"port": port, "load": 0})
+        
+        # time.sleep(startup_delay)  # 等待所有实例启动
 
+    def start_instance(self, port,num):
+        """启动vllm实例在特定GPU和端口上"""
+        # cmd = f"CUDA_VISIBLE_DEVICES={num} OLLAMA_HOST=http://localhost:{port} ollama serve"
+        # cmd_gen =f"CUDA_VISIBLE_DEVICES={num}  vllm serve /cpfs04/user/zhangyaoze/vllm_weight/Qwen3-14b  --port {port} --max-model-len 32768"
+        # # cmd_embed =f"CUDA_VISIBLE_DEVICES={num}  vllm serve /cpfs04/user/zhangyaoze/vllm_weight/bge-m3  --port {8001+num*2} --max-model-len 8192 "
+        # # print("Running command:", cmd)
+        print("continue")
+        # subprocess.Popen(cmd_gen, shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        # subprocess.Popen(cmd_embed, shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        
+
+    def get_available_instance(self):
+        """使用轮询策略获取一个可用的实例"""
+        with self.lock:
+            instance = self.instances[self.current_instance]
+            self.current_instance = (self.current_instance + 1) % len(self.instances)
+            return instance["port"]  # 返回端口
+
+    def generate_text(self, prompt,system_prompt=None, history_messages=[], **kwargs):
+        """发送请求到选择的实例"""
+        port = self.get_available_instance()
+        base_url = f"http://localhost:{port}/v1"
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        # Get the cached response if having-------------------
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": prompt})
+        
+        try:
+            cur_token_cost = len(tokenizer.encode(messages[0-1]['content']))
+            if cur_token_cost>28672:
+                cur_token_cost = 28672
+                messages[0]['content'] = truncate_text(messages[0]['content'], max_tokens=28672)
+            self.TOTAL_TOKEN_COST += cur_token_cost
+            # logging api call cost
+            self.TOTAL_API_CALL_COST += 1
+            response = requests.post(
+            f"{base_url}/chat/completions",
+            json={
+                "model": self.generate_model,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                **kwargs,
+                "chat_template_kwargs": {"enable_thinking": False}
+            },
+            timeout=30
+        )
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Retry for Error: {e}")
+            response = ""    
+
+        
+        
+        res=json.loads(response.content)
+        response_message = res["choices"][0]["message"]['content']#对结果进行后处理
+        return response_message

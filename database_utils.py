@@ -184,20 +184,17 @@ def insert_data_to_mysql(working_dir):
             db.rollback()
             print(e)
             print("insert communities error")
-def find_tree_root(working_dir,entity):
+def find_tree_root(db,working_dir,entity):
     res=[entity]
-    dbname=os.path.basename(working_dir)
-    db = pymysql.connect(host='localhost', user='root',
-                      passwd='123',database=dbname, charset='utf8')
     cursor = db.cursor()
     
-    depth_sql="select max(level) from entities"
+    depth_sql=f"select max(level) from {working_dir}.entities"
     cursor.execute(depth_sql)
     depth=cursor.fetchall()[0][0]#树的深度为max(level)+1，因为level是从0开始的，但最后一层的parent为root，没什么意义，所以就这样算了，不进行+1
     i=0
     
     while i< depth:
-        sql=f"select parent from entities where entity_name='{entity}' and level={i} "
+        sql=f"select parent from {working_dir}.entities where entity_name='{entity}' and level={i} "
         cursor.execute(sql)
         ret=cursor.fetchall()
         # print(ret)
@@ -205,16 +202,13 @@ def find_tree_root(working_dir,entity):
         entity=ret[0][0]
         res.append(entity)
     return res
-def search_nodes_link(entity1,entity2,working_dir,level):
-    dbname=os.path.basename(working_dir)
-    db = pymysql.connect(host='localhost', user='root',
-                      passwd='123',database=dbname, charset='utf8')
+def search_nodes_link(entity1,entity2,db,working_dir,level):
     cursor = db.cursor()
-    sql=f"select * from relations where src_tgt='{entity1}' and tgt_src='{entity2}' and level={level}"
+    sql=f"select * from {working_dir}.relations where src_tgt='{entity1}' and tgt_src='{entity2}' and level={level}"
     cursor.execute(sql)
     ret=cursor.fetchall()
     if len(ret)==0:
-        sql=f"select * from relations where src_tgt='{entity2}' and tgt_src='{entity1}' and level={level}"
+        sql=f"select * from {working_dir}.relations where src_tgt='{entity2}' and tgt_src='{entity1}' and level={level}"
         cursor.execute(sql)
         ret=cursor.fetchall()
     if len(ret)==0:
@@ -222,24 +216,19 @@ def search_nodes_link(entity1,entity2,working_dir,level):
     else:
         return ret[0]
 
-def search_nodes(entity_set,working_dir):
+def search_nodes(entity_set,db,working_dir):
     res=[]
-    dbname=os.path.basename(working_dir)
-    db = pymysql.connect(host='localhost', user='root',
-                      passwd='123',database=dbname, charset='utf8')
     cursor = db.cursor()
     for entity in entity_set:
-        sql=f"select * from entities where entity_name='{entity}' and level=0"
+        sql=f"select * from {working_dir}.entities where entity_name='{entity}' and level=0"
         cursor.execute(sql)
         ret=cursor.fetchall()
         res.append(ret[0])
     return res
-def search_community(entity_name,working_dir):
-    dbname=os.path.basename(working_dir)
-    db = pymysql.connect(host='localhost', user='root',
-                      passwd='123',database=dbname, charset='utf8')
+def search_community(entity_name,db,working_dir):
+    
     cursor = db.cursor()
-    sql=f"select * from communities where entity_name='{entity_name}'"
+    sql=f"select * from {working_dir}.communities where entity_name='{entity_name}'"
     cursor.execute(sql)
     ret=cursor.fetchall()
     return ret[0]

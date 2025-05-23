@@ -5,6 +5,7 @@ import time
 import logging
 import numpy as np
 from openai import OpenAI
+import pymysql
 import tiktoken
 from tqdm import tqdm
 import yaml
@@ -79,7 +80,7 @@ def deepseepk_model_if_cache(
     if response == "":
         return response
     return response.choices[0].message.content
-def get_reasoning_chain(global_config,entities_set):
+def get_reasoning_chain(global_config,db,entities_set):
     maybe_edges=list(combinations(entities_set,2))
     reasoning_path=[]
     reasoning_path_information=[]
@@ -89,8 +90,8 @@ def get_reasoning_chain(global_config,entities_set):
         b_path=[]
         node1=edge[0]
         node2=edge[1]
-        node1_tree=find_tree_root(global_config['working_dir'],node1)
-        node2_tree=find_tree_root(global_config['working_dir'],node2)
+        node1_tree=find_tree_root(db,global_config['working_dir'],node1)
+        node2_tree=find_tree_root(db,global_config['working_dir'],node2)
         
         # if node1_tree[1]!=node2_tree[1] :
         #     print("debug")
@@ -99,7 +100,7 @@ def get_reasoning_chain(global_config,entities_set):
                 a_path.append(i)
                 b_path.append(j)
                 if (i,j) not in information_record and (j,i)not in information_record:
-                    information=search_nodes_link(i,j,global_config['working_dir'],index-1)
+                    information=search_nodes_link(i,j,db,global_config['working_dir'],index-1)
                     if information!=None:
                         reasoning_path_information.append(information)
                         information_record.append((i,j))
@@ -111,21 +112,21 @@ def get_reasoning_chain(global_config,entities_set):
     # reasoning_path_information_description="\t\t".join(columns)+"\n"
     reasoning_path_information_description="\n".join([information[2] for information in reasoning_path_information])  
     return  reasoning_path,reasoning_path_information_description
-def get_entity_description(global_config,entities_set):
-    entity_informations=search_nodes(entities_set,WORKING_DIR)
+def get_entity_description(global_config,db,entities_set):
+    entity_informations=search_nodes(entities_set,db,global_config['working_dir'])
     columns=['entity_name','entity_type','parent','description']
     entity_descriptions="\t\t".join(columns)+"\n"
     entity_descriptions+="\n".join([information[0]+"\t\t"+information[3]+"\t\t"+information[5]+"\t\t"+information[1] for information in entity_informations])
     return entity_descriptions
         
-def get_aggregation_description(global_config,reasoning_path,if_findings=False):
+def get_aggregation_description(global_config,db,reasoning_path,if_findings=False):
     communities=set()
     aggregation_results=[]
     for each_path in reasoning_path:
         for community in each_path[1:-1]:
             communities.add(community)
     for community in communities:
-        aggregation_results.append(search_community(community,global_config['working_dir']))
+        aggregation_results.append(search_community(community,db,global_config['working_dir']))
     if if_findings:
         columns=['entity_name','entity_description','findings']
         aggregation_descriptions="\t\t".join(columns)+"\n"
@@ -135,14 +136,14 @@ def get_aggregation_description(global_config,reasoning_path,if_findings=False):
         aggregation_descriptions="\t\t".join(columns)+"\n"
         aggregation_descriptions+="\n".join([information[0]+"\t\t"+str(information[1]) for information in aggregation_results])
     return aggregation_descriptions
-def query_graph(global_config,query):
+def query_graph(global_config,db,query):
     use_llm_func: callable = global_config["use_llm_func"]
     b=time.time()
-    res_entity=search_vector_search(WORKING_DIR,embedding(query),20)
+    res_entity=search_vector_search(global_config['working_dir'],embedding(query),20)
     v=time.time()
-    entity_descriptions=get_entity_description(global_config,res_entity)
-    reasoning_path,reasoning_path_information_description=get_reasoning_chain(global_config,res_entity)
-    aggregation_descriptions=get_aggregation_description(global_config,reasoning_path)
+    entity_descriptions=get_entity_description(global_config,db,res_entity)
+    reasoning_path,reasoning_path_information_description=get_reasoning_chain(global_config,db,res_entity)
+    aggregation_descriptions=get_aggregation_description(global_config,db,reasoning_path)
     describe=f"""
     entity_information:
     {entity_descriptions}
@@ -162,15 +163,20 @@ def query_graph(global_config,query):
     print(f"response time: {g-e:.2f}s")
     return response
 if __name__=="__main__":
+    db = pymysql.connect(host='localhost', user='root',
+                      passwd='123', charset='utf8')
     global_config={}
+    
     global_config['use_llm_func']=deepseepk_model_if_cache
     global_config['embeddings_func']=embedding
-    global_config["special_community_report_llm_kwargs"]=field(
-        default_factory=lambda: {"response_format": {"type": "json_object"}}
-    )
     global_config['working_dir']=WORKING_DIR
-    query="What's the relationship between  Polices and Global Value Chain Community?"
-    print(query_graph(global_config,query))
-    # print("======================")
-    # print(query_graph(global_config,query))
+    
+    query="What's the relationship between  Polices and Digital era?"
+    print(query_graph(global_config,db,query))
+    beginning=time.time()
+    for i in range(10):
+        print(query_graph(global_config,db,query))
+    end=time.time()
+    print(f"total time: {end-beginning:.2f}s")
+    db.close()
     

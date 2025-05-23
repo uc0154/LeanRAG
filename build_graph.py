@@ -10,7 +10,7 @@ from tqdm import tqdm
 import yaml
 from openai import AsyncOpenAI, OpenAI
 from _cluster_utils import Hierarchical_Clustering
-from tools.utils import write_jsonl
+from tools.utils import write_jsonl,InstanceManager
 from database_utils import build_vector_search,create_db_table_mysql,insert_data_to_mysql
 import requests
 import multiprocessing
@@ -25,17 +25,17 @@ EMBEDDING_MODEL = config['glm']['model']
 EMBEDDING_URL = config['glm']['base_url']
 TOTAL_TOKEN_COST = 0
 TOTAL_API_CALL_COST = 0
-WORKING_DIR = f"data"
+WORKING_DIR = f"test"
 if not os.path.exists(WORKING_DIR):
     os.mkdir(WORKING_DIR)
 
 def get_common_rag_res():
     # entity_path="processed_data/entity.jsonl"
     # relation_path="processed_data/relation.jsonl"
-    entity_path="data/entity.jsonl"
-    relation_path="data/relation.jsonl"
-    # entity_path="test_data/entity.jsonl"
-    # relation_path="test_data/relation.jsonl"
+    # entity_path="data/entity.jsonl"
+    # relation_path="data/relation.jsonl"
+    entity_path="test_data/entity.jsonl"
+    relation_path="test_data/relation.jsonl"
     
     # i=0
     e_dic={}
@@ -90,23 +90,7 @@ def get_common_rag_res():
     
     return e_dic,r_dic
 
-# from vllm import LLM
-# embed_model = LLM(
-#     model="/cpfs04/user/zhangyaoze/vllm_weight/bge-m3",
-#     task="embed",
-#     enforce_eager=True,
-# )
-# def embedding(texts: list[str]) -> np.ndarray: #vllm
-#     embedding=embed_model.embed(texts,use_tqdm=False)
-#     final_embedding = [d.outputs.embedding for d in embedding]
-#     return np.array(final_embedding)
-# def embedding_init(entities:list[dict])-> list[dict]:  #vllm
-#     texts=[truncate_text(i['description']) for i in entities]
-#     embedding=embed_model.embed(texts,use_tqdm=False)
-#     final_embedding = [d.outputs.embedding for d in embedding]
-#     for i, entity in enumerate(entities):
-#         entity['vector'] = final_embedding[i]
-#     return entities
+
 def embedding(texts: list[str]) -> np.ndarray: #vllm serve
     model_name = EMBEDDING_MODEL
     client = OpenAI(
@@ -132,7 +116,7 @@ def embedding_init(entities:list[dict])-> list[dict]:
     )
     final_embedding = [d.embedding for d in embedding.data]
     for i, entity in enumerate(entities):
-        entity['vector'] = final_embedding[i]
+        entity['vector'] = np.array(final_embedding[i])
     return entities
 tokenizer = tiktoken.get_encoding("cl100k_base")
 def truncate_text(text, max_tokens=4096):
@@ -141,46 +125,46 @@ def truncate_text(text, max_tokens=4096):
         tokens = tokens[:max_tokens]
     truncated_text = tokenizer.decode(tokens)
     return truncated_text
-def deepseepk_model_if_cache(
-    prompt, system_prompt=None, history_messages=[], **kwargs
-) -> str:
-    global TOTAL_TOKEN_COST
-    global TOTAL_API_CALL_COST
+# def deepseepk_model_if_cache(
+#     prompt, system_prompt=None, history_messages=[], **kwargs
+# ) -> str:
+#     global TOTAL_TOKEN_COST
+#     global TOTAL_API_CALL_COST
 
-    openai_async_client =OpenAI(
-        api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_URL
-    )
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
+#     openai_async_client =OpenAI(
+#         api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_URL
+#     )
+#     messages = []
+#     if system_prompt:
+#         messages.append({"role": "system", "content": system_prompt})
 
-    # Get the cached response if having-------------------
-    messages.extend(history_messages)
-    messages.append({"role": "user", "content": prompt})
-    # -----------------------------------------------------
-    retry_time = 3
-    try:
-        # logging token cost
-        cur_token_cost = len(tokenizer.encode(messages[0]['content']))
-        if cur_token_cost>28672:
-            cur_token_cost = 28672
-            messages[0]['content'] = truncate_text(messages[0]['content'], max_tokens=28672)
-        TOTAL_TOKEN_COST += cur_token_cost
-        # logging api call cost
-        TOTAL_API_CALL_COST += 1
-        # request
-        response =openai_async_client.chat.completions.create(
-            model=MODEL, messages=messages, **kwargs,
-            extra_body={"chat_template_kwargs": {"enable_thinking": False}}
-        )
-    except Exception as e:
-        print(f"Retry for Error: {e}")
-        retry_time -= 1
-        response = ""
+#     # Get the cached response if having-------------------
+#     messages.extend(history_messages)
+#     messages.append({"role": "user", "content": prompt})
+#     # -----------------------------------------------------
+#     retry_time = 3
+#     try:
+#         # logging token cost
+#         cur_token_cost = len(tokenizer.encode(messages[0]['content']))
+#         if cur_token_cost>28672:
+#             cur_token_cost = 28672
+#             messages[0]['content'] = truncate_text(messages[0]['content'], max_tokens=28672)
+#         TOTAL_TOKEN_COST += cur_token_cost
+#         # logging api call cost
+#         TOTAL_API_CALL_COST += 1
+#         # request
+#         response =openai_async_client.chat.completions.create(
+#             model=MODEL, messages=messages, **kwargs,
+#             extra_body={"chat_template_kwargs": {"enable_thinking": False}}
+#         )
+#     except Exception as e:
+#         print(f"Retry for Error: {e}")
+#         retry_time -= 1
+#         response = ""
     
-    if response == "":
-        return response
-    return response.choices[0].message.content
+#     if response == "":
+#         return response
+#     return response.choices[0].message.content
 
 
 def embedding_data(entity_results):
@@ -207,24 +191,7 @@ def embedding_data(entity_results):
     return entity_results
 
 
-def check_test(entities):
-    e_l=[]
-    for layer in entities:
-        temp_e=[]
-        if type(layer) != list:
-            temp_e.append(layer['entity_name'])
-            e_l.append(temp_e)
-            continue
-        for item in layer:
-            temp_e.append(item['entity_name'])
-        e_l.append(temp_e)
-        
-    for index,layer in enumerate(entities):
-        if type(layer) != list or len(layer) == 1:
-            break
-        for item in layer:
-            if item['parent'] not in e_l[index+1]:
-                print(item['entity_name'],item['parent'])
+
     
             
 def hierarchical_clustering(global_config):
@@ -264,8 +231,15 @@ if __name__=="__main__":
         multiprocessing.set_start_method("spawn", force=True)  # 强制设置
     except RuntimeError:
         pass  # 已经设置过，忽略
+    num=2
+    instanceManager=InstanceManager(
+        ports=[8001+i for i in range(num)],
+        gpus=[i for i in range(num)],
+        generate_model=MODEL,
+        startup_delay=30
+    )
     global_config={}
-    global_config['use_llm_func']=deepseepk_model_if_cache
+    global_config['use_llm_func']=instanceManager.generate_text
     global_config['embeddings_func']=embedding
     global_config["special_community_report_llm_kwargs"]=field(
         default_factory=lambda: {"response_format": {"type": "json_object"}}
