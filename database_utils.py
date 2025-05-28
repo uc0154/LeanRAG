@@ -53,7 +53,7 @@ def build_vector_search(data,working_dir):
     #         collection_name=collection_name,
     #         data=data
     #     )
-def search_vector_search(working_dir,query,topk):
+def search_vector_search(working_dir,query,topk=10):
     milvus_client = MilvusClient(uri=f"{working_dir}/milvus_demo.db")
     collection_name = "entity_collection"
     # query_embedding = emb_text(query)

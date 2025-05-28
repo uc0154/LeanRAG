@@ -136,10 +136,10 @@ def get_aggregation_description(global_config,db,reasoning_path,if_findings=Fals
         aggregation_descriptions="\t\t".join(columns)+"\n"
         aggregation_descriptions+="\n".join([information[0]+"\t\t"+str(information[1]) for information in aggregation_results])
     return aggregation_descriptions
-def query_graph(global_config,db,query):
+def query_graph(global_config,db,query,topk=10):
     use_llm_func: callable = global_config["use_llm_func"]
     b=time.time()
-    res_entity=search_vector_search(global_config['working_dir'],embedding(query),20)
+    res_entity=search_vector_search(global_config['working_dir'],embedding(query),topk=topk)
     v=time.time()
     entity_descriptions=get_entity_description(global_config,db,res_entity)
     reasoning_path,reasoning_path_information_description=get_reasoning_chain(global_config,db,res_entity)
@@ -172,7 +172,8 @@ if __name__=="__main__":
     global_config['working_dir']=WORKING_DIR
     
     query="What's the relationship between  Polices and Digital era?"
-    print(query_graph(global_config,db,query))
+    topk=10
+    print(query_graph(global_config,db,query,topk=topk))
     beginning=time.time()
     for i in range(10):
         print(query_graph(global_config,db,query))
