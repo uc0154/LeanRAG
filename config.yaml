@@ -6,7 +6,7 @@
 #   base_url: "http://localhost:11435/v1"
 #   embedding_model: "bge-m3:latest"
 glm:
-  model: "/cpfs04/user/zhangyaoze/vllm_weight/bge-m3"
+  model: "bge"
   api_key: "ollama"
   base_url: "http://localhost:8000/v1"
   embedding_model: "bge-m3:latest"
@@ -14,7 +14,7 @@ glm:
 deepseek:
   # model: "/cpfs04/user/zhangyaoze/vllm_weight/Qwen2.5-7B-Instruct"
   # model: "/cpfs04/user/zhangyaoze/vllm_weight/Qwen3-awq"
-  model: "/cpfs04/user/zhangyaoze/vllm_weight/Qwen3-14b"
+  model: "Qwen3-14b"
   # model: "/cpfs04/user/zhangyaoze/vllm_weight/qwen3-32b"
   api_key: "ollama"
   base_url: "http://localhost:8001/v1"

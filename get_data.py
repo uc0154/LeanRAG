@@ -49,11 +49,11 @@ def truncate_data():
                     if i==20000:
                         break
     write_jsonl(res,entity_output_path)
-def deal_duplicate_entity():
-    relation_path="/cpfs04/user/zhangyaoze/workspace/Common_KG_Build/relation.jsonl"
-    relation_output_path="/cpfs04/user/zhangyaoze/workspace/trag/processed_data/relation.jsonl"
-    entity_path="/cpfs04/user/zhangyaoze/workspace/Common_KG_Build/entity.jsonl"
-    entity_output_path="/cpfs04/user/zhangyaoze/workspace/trag/processed_data/entity.jsonl"
+def deal_duplicate_entity(working_dir,output_path):
+    relation_path=f"{working_dir}/relation.jsonl"
+    relation_output_path=f"{output_path}/relation.jsonl"
+    entity_path=f"{working_dir}/entity.jsonl"
+    entity_output_path=f"{output_path}/entity.jsonl"
     
     all_entities=[]
     all_relations=[]
@@ -63,9 +63,9 @@ def deal_duplicate_entity():
     with open(entity_path,"r")as f:
         for xline in f:
             line=json.loads(xline)
-            entity_name=str(line['entity_name'])
-            entity_type=line['entity_type']
-            description=line['description']
+            entity_name=str(line['entity_name']).replace("\"","")
+            entity_type=line['entity_type'].replace("\"","")
+            description=line['description'].replace("\"","")
             source_id=line['source_id']
             if entity_name not in e_dic.keys():
                 e_dic[entity_name]=dict(
@@ -106,22 +106,30 @@ def deal_duplicate_entity():
     write_jsonl(all_entities,entity_output_path)
     with open(relation_path,"r")as f:
         for xline in f:
-            line=json.loads(xline)
-            src_tgt=str(line['src_tgt'])
-            tgt_src=str(line['tgt_src'])
-            description=line['description']
+            line=json.loads(xline)[0]
+            src_tgt=str(line['src_id']).replace("\"","")
+            tgt_src=str(line['tgt_id']).replace("\"","")
+            description=line['description'].replace("\"","")
             weight=1
             source_id=line['source_id']
-            r_dic[(src_tgt,tgt_src)]={
-                'src_tgt':str(src_tgt),
-                'tgt_src':str(tgt_src),
-                'description':description,
-                'weight':weight,
-                'source_id':source_id
-            }
+            # r_dic[(src_tgt,tgt_src)]={
+            #     'src_tgt':str(src_tgt),
+            #     'tgt_src':str(tgt_src),
+            #     'description':description,
+            #     'weight':weight,
+            #     'source_id':source_id
+            # }
+            all_relations.append(dict(
+                src_tgt=src_tgt,
+                tgt_src=tgt_src,
+                description=description,
+                weight=weight,
+                source_id=source_id
+            ))
             # e_dic[src_tgt]['degree']+=1
             # e_dic[tgt_src]['degree']+=1
     write_jsonl(all_relations,relation_output_path)
 if __name__=="__main__":
     # deal_duplicate_entity()
-    truncate_data()
+    # truncate_data()
+    deal_duplicate_entity("/cpfs04/user/zhangyaoze/workspace/entity_relation_extract/HiRAG/eval/datasets/mix/test","/cpfs04/user/zhangyaoze/workspace/trag/datasets/mix")
